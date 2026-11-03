@@ -1,14 +1,181 @@
 :root {
   font-family: system-ui, sans-serif;
   color-scheme: light dark;
+  --user-bg: #2b5fd9;
+  --assistant-bg: rgb(128 128 128 / 0.18);
+  --border: rgb(128 128 128 / 0.35);
+}
+
+* {
+  box-sizing: border-box;
 }
 
 body {
   margin: 0;
 }
 
+button,
+input,
+textarea {
+  font: inherit;
+}
+
+/* 16px minimum stops iOS Safari zooming the page when an input is focused. */
+input,
+textarea {
+  font-size: 1rem;
+}
+
 main {
   max-width: 40rem;
   margin: 0 auto;
   padding: 1rem;
+}
+
+/* Home */
+
+.home form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+textarea,
+.chat-input input {
+  padding: 0.6rem 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+  background: transparent;
+  color: inherit;
+}
+
+textarea {
+  resize: vertical;
+}
+
+button {
+  padding: 0.6rem 1rem;
+  border: 0;
+  border-radius: 0.5rem;
+  background: var(--user-bg);
+  color: white;
+  cursor: pointer;
+}
+
+button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.conversation-list {
+  padding: 0;
+  list-style: none;
+}
+
+.conversation-list li {
+  border-bottom: 1px solid var(--border);
+}
+
+.conversation-list a {
+  display: block;
+  padding: 0.75rem 0;
+  color: inherit;
+  text-decoration: none;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Chat: fills the viewport, only the message log scrolls. */
+
+.chat {
+  display: flex;
+  flex-direction: column;
+  height: 100dvh;
+  max-width: 40rem;
+  margin: 0 auto;
+}
+
+.chat-header {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.5rem 1rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.chat-header a {
+  color: inherit;
+  text-decoration: none;
+  font-size: 1.25rem;
+}
+
+.chat-scenario {
+  margin: 0;
+  font-size: 0.875rem;
+  opacity: 0.75;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chat-log {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 1rem;
+  overflow-y: auto;
+}
+
+.bubble {
+  margin: 0;
+  max-width: 85%;
+  padding: 0.55rem 0.8rem;
+  border-radius: 1rem;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.bubble.user {
+  align-self: flex-end;
+  background: var(--user-bg);
+  color: white;
+}
+
+.bubble.assistant {
+  align-self: flex-start;
+  background: var(--assistant-bg);
+}
+
+.bubble.typing {
+  opacity: 0.6;
+}
+
+.chat-error,
+.chat-status {
+  margin: 0;
+  padding: 0.4rem 1rem;
+  font-size: 0.875rem;
+}
+
+.chat-error {
+  color: #d33;
+}
+
+.chat-status {
+  opacity: 0.7;
+}
+
+.chat-input {
+  display: flex;
+  gap: 0.5rem;
+  padding: 0.5rem 1rem calc(0.5rem + env(safe-area-inset-bottom, 0px));
+  border-top: 1px solid var(--border);
+}
+
+.chat-input input {
+  flex: 1;
+  min-width: 0;
 }

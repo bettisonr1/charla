@@ -6,7 +6,7 @@ services:
       POSTGRES_PASSWORD: charla
       POSTGRES_DB: charla
     ports:
-      - "5433:5432"
+      - "5442:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:

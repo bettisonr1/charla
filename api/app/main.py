@@ -4,7 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import settings
 from app.logging import configure_logging
-from app.routers import health
+from app.routers import conversations, health
 
 
 def create_app() -> FastAPI:
@@ -17,6 +17,7 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
     app.include_router(health.router)
+    app.include_router(conversations.router)
     structlog.get_logger().info("app_created", env=settings.env)
     return app
 

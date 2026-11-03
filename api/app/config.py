@@ -6,7 +6,7 @@ class Settings(BaseSettings):
 
     env: str = "development"
     log_level: str = "INFO"
-    database_url: str = "postgresql+asyncpg://charla:charla@localhost:5433/charla"
+    database_url: str = "postgresql+asyncpg://charla:charla@localhost:5442/charla"
     anthropic_api_key: str = ""
     anthropic_model: str = "claude-sonnet-5-5"
     cors_origins: list[str] = ["http://localhost:5173"]
