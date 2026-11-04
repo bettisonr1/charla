@@ -36,3 +36,10 @@ class CorrectionReport(BaseModel):
     natural_rewrite: str | None = Field(
         default=None, description="Optional more idiomatic version of the whole message."
     )
+
+
+class LocatedCorrection(Correction):
+    """A correction placed in the message by the server. Offsets are code points."""
+
+    start: int
+    end: int
