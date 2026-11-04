@@ -70,3 +70,23 @@ conversation, wait briefly (a few seconds), then summarise what has landed.
 
 A deliberately wrong sentence is flagged within about 2 seconds, a correct one is not, and the summary
 matches what was flagged.
+
+## Status
+
+Built: eval harness and 74 cases, correction prompt, `LLM.correct()`, locate-and-validate, own-session
+persistence, `user_message_saved`/`corrections` events, `MessageOut.corrections`, underlines and bottom
+sheet, `ended_at` + migration, `POST /conversations/{id}/end`, `GET /conversations/{id}/summary`,
+summary screen, read-only chat.
+
+Not done yet (needs `ANTHROPIC_API_KEY` and Rob's labels):
+- **Baseline eval run and Haiku-vs-Sonnet choice.** `correction_model` defaults to Haiku as an untested
+  guess. Run `uv run python -m evals.corrections --model <id> --runs 3 --split dev` for both models,
+  then commit the baseline with `git add -f api/evals/results/<file>.json`.
+- **Real cases.** The 74 cases are synthetic. Add Rob's own past mistakes.
+- **The 2-second latency check** on real hardware.
+
+Deviations from the plan:
+- The SDK's `messages.create` no longer accepts `temperature`, so the eval cannot pin it to 0; the
+  `--runs 3` mean/worst reporting is what absorbs the noise.
+- Ending a conversation waits for pending corrections (up to 5 s) in the summary endpoint, not in
+  `/end`, so ending returns immediately.

@@ -36,3 +36,20 @@ class CorrectionReport(BaseModel):
     natural_rewrite: str | None = Field(
         default=None, description="Optional more idiomatic version of the whole message."
     )
+
+
+class LocatedCorrection(Correction):
+    """A correction placed in the learner's message by the server.
+
+    `start`/`end` are code-point offsets into the NFC-normalised message (end exclusive). The model
+    never produces them: models count characters badly, so `CorrectionReport` stays offset-free.
+    """
+
+    start: int = Field(ge=0)
+    end: int = Field(ge=0)
+
+
+class StoredCorrections(BaseModel):
+    """What `messages.corrections` holds. A missing column means "not checked or check failed"."""
+
+    corrections: list[LocatedCorrection] = Field(default_factory=list)

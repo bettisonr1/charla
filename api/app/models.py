@@ -17,6 +17,8 @@ class Conversation(Base):
     id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
     scenario: Mapped[str] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    # Set when the learner ends the conversation; it is read-only from then on.
+    ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     messages: Mapped[list["Message"]] = relationship(back_populates="conversation")
 

@@ -15,6 +15,7 @@ API (run from `api/`):
 - `uv run fastapi dev app/main.py` — dev server on :8000
 - `uv run pytest` — tests
 - `uv run ruff check .` — lint; `uv run mypy app` — types (strict)
+- `uv run python -m evals.corrections --model <id> --runs 3 --split dev` — correction eval (real model, needs API key; not in CI)
 - `uv run alembic revision --autogenerate -m "<msg>"` then `uv run alembic upgrade head` — migrations (needs `docker compose up -d db`)
 
 Web (run from `web/`):

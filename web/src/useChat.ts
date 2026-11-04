@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import {
   CLOSE_NOT_FOUND,
   chatSocketUrl,
+  endConversation,
   getConversation,
   type Message,
   type ServerEvent,
@@ -24,8 +25,10 @@ export function useChat(conversationId: string) {
   const [streaming, setStreaming] = useState('')
   const [status, setStatus] = useState<ChatStatus>('connecting')
   const [error, setError] = useState<string | null>(null)
+  const [ended, setEnded] = useState(false)
   const socketRef = useRef<WebSocket | null>(null)
   const localId = useRef(0)
+  const endedRef = useRef(false)
 
   useEffect(() => {
     let cancelled = false
@@ -46,6 +49,13 @@ export function useChat(conversationId: string) {
         setScenario(detail.scenario)
         setMessages(detail.messages)
         setStreaming('')
+        if (detail.ended_at) {
+          // Read-only: no socket, so the server never sends an opener or accepts messages.
+          endedRef.current = true
+          setEnded(true)
+          setStatus('closed')
+          return
+        }
       } catch {
         if (cancelled) return
         setStatus('closed')
@@ -63,7 +73,18 @@ export function useChat(conversationId: string) {
       }
       socket.onmessage = (event: MessageEvent<string>) => {
         const data = JSON.parse(event.data) as ServerEvent
-        if (data.type === 'token') {
+        if (data.type === 'user_message_saved') {
+          // Swap the oldest optimistic id for the real one so later events can find the message.
+          setMessages((prev) => {
+            const index = prev.findIndex((m) => m.id.startsWith('local-'))
+            if (index < 0) return prev
+            return prev.map((m, i) => (i === index ? { ...m, id: data.id } : m))
+          })
+        } else if (data.type === 'corrections') {
+          setMessages((prev) =>
+            prev.map((m) => (m.id === data.message_id ? { ...m, corrections: data.corrections } : m)),
+          )
+        } else if (data.type === 'token') {
           setStreaming((s) => s + data.text)
         } else if (data.type === 'message_done') {
           setStreaming('')
@@ -82,7 +103,7 @@ export function useChat(conversationId: string) {
         }
       }
       socket.onclose = (event: CloseEvent) => {
-        if (cancelled) return
+        if (cancelled || endedRef.current) return
         socketRef.current = null
         setStatus('closed')
         if (event.code === CLOSE_NOT_FOUND) {
@@ -122,9 +143,24 @@ export function useChat(conversationId: string) {
     return true
   }, [])
 
+  /** End the conversation for good. Resolves true once the server confirms. */
+  const end = useCallback(async (): Promise<boolean> => {
+    try {
+      await endConversation(conversationId)
+    } catch {
+      setError('Could not end the conversation.')
+      return false
+    }
+    endedRef.current = true
+    setEnded(true)
+    socketRef.current?.close()
+    return true
+  }, [conversationId])
+
   const last = messages[messages.length - 1]
   const waitingForReply =
+    !ended &&
     status === 'open' && !error && streaming === '' && (!last || last.role === 'user')
 
-  return { scenario, messages, streaming, status, error, waitingForReply, send }
+  return { scenario, messages, streaming, status, error, waitingForReply, ended, send, end }
 }

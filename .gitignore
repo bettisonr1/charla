@@ -14,3 +14,7 @@ __pycache__/
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
+
+# eval runs (commit a baseline deliberately with `git add -f`)
+api/evals/results/*
+!api/evals/results/.gitkeep

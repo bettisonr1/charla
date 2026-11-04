@@ -3,22 +3,29 @@
 WebSocket protocol (JSON text frames):
 
   client -> server   {"type": "message", "content": "<the learner's text>"}
-  server -> client   {"type": "token", "text": "<next chunk of the agent's reply>"}
+  server -> client   {"type": "user_message_saved", "id": "<message id>"}
+                     {"type": "corrections", "message_id": "<id>", "corrections": [<located>]}
+                     {"type": "token", "text": "<next chunk of the agent's reply>"}
                      {"type": "message_done", "id": "<message id>", "content": "<full reply>"}
                      {"type": "error", "detail": "<what went wrong>"}
 
 On connect, the server replies first if the agent has not spoken yet (a new conversation) or if
-the last stored message is the learner's and has no reply (an interrupted turn). Closing code
-4404 means the conversation does not exist.
+the last stored message is the learner's and has no reply (an interrupted turn), unless the
+conversation has ended. Corrections arrive whenever the separate correction call finishes, never
+blocking the reply; a failed correction call sends nothing. After the conversation is ended, every
+message gets an error event. Closing code 4404 means the conversation does not exist.
 """
 
-from typing import Annotated
+import json
+from typing import Annotated, Any
 from uuid import UUID
 
 import structlog
 from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisconnect
 from pydantic import ValidationError
 
+from app import pending
+from app.corrections import check_message, normalize
 from app.llm import LLM, LLMUnavailableError, get_llm
 from app.models import Conversation
 from app.prompts import build_system_prompt, to_api_messages
@@ -27,9 +34,12 @@ from app.schemas.conversation import (
     ConversationCreate,
     ConversationDetail,
     ConversationOut,
+    ConversationSummary,
     MessageOut,
 )
+from app.schemas.correction import StoredCorrections
 from app.store import Store, get_store
+from app.summary import build_summary
 
 log = structlog.get_logger()
 
@@ -39,6 +49,8 @@ StoreDep = Annotated[Store, Depends(get_store)]
 LLMDep = Annotated[LLM, Depends(get_llm)]
 
 CLOSE_NOT_FOUND = 4404
+# How long ending a conversation waits for corrections still in flight before summarising.
+SUMMARY_WAIT_SECONDS = 5.0
 
 
 @router.post("", response_model=ConversationOut, status_code=201)
@@ -67,11 +79,35 @@ async def get_conversation(conversation_id: UUID, store: StoreDep) -> Conversati
         id=conversation.id,
         scenario=conversation.scenario,
         created_at=conversation.created_at,
+        ended_at=conversation.ended_at,
         messages=[MessageOut.model_validate(m) for m in messages],
     )
 
 
-async def _send(ws: WebSocket, event: dict[str, str]) -> None:
+@router.post("/{conversation_id}/end", response_model=ConversationOut)
+async def end_conversation(conversation_id: UUID, store: StoreDep) -> Conversation:
+    """End the conversation for good: the chat becomes read-only and the summary is final."""
+    conversation = await store.end_conversation(conversation_id)
+    if conversation is None:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+    log.info("conversation_ended", conversation_id=str(conversation_id))
+    return conversation
+
+
+@router.get("/{conversation_id}/summary", response_model=ConversationSummary)
+async def get_summary(conversation_id: UUID, store: StoreDep) -> ConversationSummary:
+    conversation = await store.get_conversation(conversation_id)
+    if conversation is None:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+    if conversation.ended_at is None:
+        raise HTTPException(status_code=409, detail="Conversation has not ended")
+    # Corrections still in flight get a few seconds to land; then summarise what we have.
+    await pending.wait_for_corrections(conversation_id, SUMMARY_WAIT_SECONDS)
+    messages = await store.list_messages(conversation_id)
+    return build_summary(conversation, messages)
+
+
+async def _send(ws: WebSocket, event: dict[str, Any]) -> None:
     """Send an event, treating a send on a closed socket as a normal disconnect."""
     try:
         await ws.send_json(event)
@@ -115,6 +151,39 @@ async def _reply(ws: WebSocket, store: Store, llm: LLM, conversation: Conversati
     await _send(ws, {"type": "message_done", "id": str(message.id), "content": text})
 
 
+async def _correct(
+    ws: WebSocket, store: Store, llm: LLM, message_id: UUID, content: str, context: str | None
+) -> None:
+    """Check one learner message in the background. Never raises and never sends `error`.
+
+    It outlives a closed socket on purpose: the result is still saved, and shows on reload.
+    """
+    try:
+        located = await check_message(llm, content, context)
+        stored = StoredCorrections(corrections=located.corrections)
+        await store.save_corrections(message_id, stored)
+    except Exception:
+        log.warning("correction_failed", message_id=str(message_id), exc_info=True)
+        return
+    log.info(
+        "corrections_saved",
+        message_id=str(message_id),
+        count=len(located.corrections),
+        dropped=located.dropped,
+    )
+    try:
+        await _send(
+            ws,
+            {
+                "type": "corrections",
+                "message_id": str(message_id),
+                "corrections": json.loads(stored.model_dump_json())["corrections"],
+            },
+        )
+    except (WebSocketDisconnect, RuntimeError):
+        pass  # The learner left; the saved result will show on reload.
+
+
 @router.websocket("/{conversation_id}/ws")
 async def chat(ws: WebSocket, conversation_id: UUID, store: StoreDep, llm: LLMDep) -> None:
     await ws.accept()
@@ -126,7 +195,7 @@ async def chat(ws: WebSocket, conversation_id: UUID, store: StoreDep, llm: LLMDe
     log.info("chat_connected", conversation_id=str(conversation_id))
     try:
         history = await store.list_messages(conversation_id)
-        if not history or history[-1].role == "user":
+        if conversation.ended_at is None and (not history or history[-1].role == "user"):
             await _reply(ws, store, llm, conversation)
 
         while True:
@@ -136,14 +205,23 @@ async def chat(ws: WebSocket, conversation_id: UUID, store: StoreDep, llm: LLMDe
             except ValidationError:
                 await _send(ws, {"type": "error", "detail": "Message must be 1-2000 characters."})
                 continue
-            content = incoming.content.strip()
+            content = normalize(incoming.content.strip())
             if not content:
                 await _send(ws, {"type": "error", "detail": "Message is empty."})
                 continue
-            await store.add_message(conversation_id, "user", content)
+            # Re-read: the learner may have ended the conversation from another request.
+            current = await store.get_conversation(conversation_id)
+            if current is None or current.ended_at is not None:
+                await _send(ws, {"type": "error", "detail": "This conversation has ended."})
+                continue
+            history = await store.list_messages(conversation_id)
+            context = history[-1].content if history and history[-1].role == "assistant" else None
+            saved = await store.add_message(conversation_id, "user", content)
             log.info(
                 "user_message", conversation_id=str(conversation_id), content_length=len(content)
             )
+            await _send(ws, {"type": "user_message_saved", "id": str(saved.id)})
+            pending.spawn(conversation_id, _correct(ws, store, llm, saved.id, content, context))
             await _reply(ws, store, llm, conversation)
     except WebSocketDisconnect:
         log.info("chat_disconnected", conversation_id=str(conversation_id))

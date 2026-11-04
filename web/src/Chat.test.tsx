@@ -101,3 +101,86 @@ it('does not reconnect when the conversation does not exist', async () => {
   })
   expect(FakeWebSocket.instances).toHaveLength(1)
 })
+
+const flagged = {
+  original: 'soy muy cansado',
+  corrected: 'estoy muy cansado',
+  category: 'ser_estar' as const,
+  explanation: 'Con estados temporales usamos "estar".',
+  start: 3,
+  end: 18,
+}
+
+async function sendOne(socket: FakeWebSocket, text: string) {
+  await userEvent.type(screen.getByLabelText('Your message'), text)
+  await userEvent.click(screen.getByRole('button', { name: 'Send' }))
+  act(() => socket.serverSend({ type: 'user_message_saved', id: 'u1' }))
+}
+
+it('underlines a flagged span and opens the correction sheet on tap', async () => {
+  const socket = await openChat()
+  await sendOne(socket, 'Yo soy muy cansado.')
+  expect(screen.queryByRole('button', { name: /Mistake/ })).not.toBeInTheDocument()
+
+  act(() => socket.serverSend({ type: 'corrections', message_id: 'u1', corrections: [flagged] }))
+  await userEvent.click(screen.getByRole('button', { name: /Mistake: soy muy cansado/ }))
+
+  const sheet = screen.getByRole('dialog', { name: 'Correction' })
+  expect(sheet).toHaveTextContent('estoy muy cansado')
+  expect(sheet).toHaveTextContent('Ser / estar')
+  expect(sheet).toHaveTextContent('Con estados temporales usamos "estar".')
+
+  await userEvent.click(screen.getByRole('button', { name: 'Got it' }))
+  expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+})
+
+it('leaves a clean message unmarked', async () => {
+  const socket = await openChat()
+  await sendOne(socket, 'Estoy bien.')
+  act(() => socket.serverSend({ type: 'corrections', message_id: 'u1', corrections: [] }))
+  expect(screen.getByText('Estoy bien.')).toBeInTheDocument()
+  expect(screen.queryByRole('button', { name: /Mistake/ })).not.toBeInTheDocument()
+})
+
+it('shows flags from stored history after a reload', async () => {
+  await openChat([
+    assistantMsg,
+    {
+      id: 'u1',
+      role: 'user',
+      content: 'Yo soy muy cansado.',
+      corrections: [flagged],
+      created_at: '2026-11-03T10:00:02Z',
+    },
+  ])
+  expect(screen.getByRole('button', { name: /Mistake: soy muy cansado/ })).toBeInTheDocument()
+})
+
+it('ends the conversation after confirmation and goes to the summary', async () => {
+  const fetchMock = stubFetch({
+    'GET /conversations/c1': detail([assistantMsg]),
+    'POST /conversations/c1/end': { id: 'c1', ended_at: '2026-11-04T10:00:00Z' },
+  })
+  render(<Chat conversationId="c1" />)
+  await screen.findByText('Ordering at a restaurant')
+  act(() => FakeWebSocket.instances[0].serverOpen())
+
+  await userEvent.click(screen.getByRole('button', { name: 'End' }))
+  await userEvent.click(screen.getByRole('button', { name: 'End conversation' }))
+
+  expect(fetchMock).toHaveBeenCalledWith('/api/conversations/c1/end', { method: 'POST' })
+  expect(window.location.hash).toBe('#c1/summary')
+  expect(screen.queryByLabelText('Your message')).not.toBeInTheDocument()
+})
+
+it('opens an ended conversation read-only, without a socket', async () => {
+  stubFetch({
+    'GET /conversations/c1': { ...detail([assistantMsg]), ended_at: '2026-11-04T10:00:00Z' },
+  })
+  render(<Chat conversationId="c1" />)
+  await screen.findByText('Ordering at a restaurant')
+  expect(FakeWebSocket.instances).toHaveLength(0)
+  expect(screen.queryByLabelText('Your message')).not.toBeInTheDocument()
+  expect(screen.getByText('This conversation has ended.')).toBeInTheDocument()
+  expect(screen.getByRole('link', { name: 'Summary' })).toHaveAttribute('href', '#c1/summary')
+})

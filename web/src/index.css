@@ -179,3 +179,118 @@ button:disabled {
   flex: 1;
   min-width: 0;
 }
+
+/* corrections */
+.flag {
+  all: unset;
+  cursor: pointer;
+  text-decoration: underline wavy #ffb4a2;
+  text-underline-offset: 0.2em;
+  padding: 0.25rem 0; /* taller tap target without moving the text */
+}
+
+.sheet-backdrop {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: flex-end;
+  background: rgba(0, 0, 0, 0.4);
+}
+
+.sheet {
+  width: 100%;
+  padding: 1rem 1rem calc(1rem + env(safe-area-inset-bottom, 0px));
+  border-radius: 1rem 1rem 0 0;
+  background: Canvas;
+  color: CanvasText;
+}
+
+.sheet p {
+  margin: 0 0 0.5rem;
+}
+
+.sheet-category {
+  font-size: 0.8rem;
+  opacity: 0.7;
+  text-transform: uppercase;
+}
+
+.sheet-diff {
+  font-size: 1.15rem;
+}
+
+.sheet-close {
+  width: 100%;
+  min-height: 2.75rem;
+  margin-top: 0.5rem;
+}
+
+.link-button {
+  all: unset;
+  cursor: pointer;
+  font-size: 0.9rem;
+  text-decoration: underline;
+  padding: 0.5rem;
+}
+
+.chat-confirm {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 1rem;
+  border-bottom: 1px solid var(--border);
+  font-size: 0.9rem;
+}
+
+.summary {
+  padding: 1rem;
+}
+
+.summary-header {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.summary-header a {
+  color: inherit;
+  text-decoration: none;
+  font-size: 1.25rem;
+}
+
+.summary h1 {
+  margin: 0;
+  font-size: 1.25rem;
+}
+
+.summary-group ul {
+  padding: 0;
+  list-style: none;
+}
+
+.summary-group li {
+  margin-bottom: 0.75rem;
+}
+
+.summary-group p {
+  margin: 0;
+}
+
+.summary-you {
+  opacity: 0.7;
+}
+
+.summary-fix {
+  font-weight: 600;
+}
+
+.summary-why {
+  font-size: 0.9rem;
+  opacity: 0.8;
+}
+
+.count {
+  opacity: 0.6;
+  font-weight: normal;
+}

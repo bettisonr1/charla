@@ -22,6 +22,8 @@ def _read_reply(ws) -> dict:  # type: ignore[no-untyped-def]
         event = ws.receive_json()
         if event["type"] == "token":
             tokens.append(event["text"])
+        elif event["type"] in ("user_message_saved", "corrections"):
+            continue  # covered in test_corrections.py
         else:
             return {**event, "tokens": tokens}
 
